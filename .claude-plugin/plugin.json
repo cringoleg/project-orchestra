@@ -1,0 +1,8 @@
+{
+  "name": "epic-flow",
+  "version": "0.1.0",
+  "description": "Epic-to-story pipeline. Manual gate every phase. Research → grill → DDD+TDD plan → claim → coder subagent.",
+  "author": {
+    "name": "Oleg Serebrennikov"
+  }
+}
