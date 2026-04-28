@@ -1,11 +1,16 @@
 {
   "epic_id": "gh-<N>",
   "issue_number": 0,
-  "stories": {
-    "1": {
-      "issue_number": 0,
-      "slug": "<kebab>",
-      "last_synced_at": ""
-    }
-  }
+  "slug": "",
+  "phase": "research",
+  "active_story": null,
+  "gate_pending": null,
+  "last_transition": "",
+  "pr_number": null,
+  "verify": {
+    "lint":  [],
+    "test":  [],
+    "build": []
+  },
+  "stories": []
 }

@@ -1,17 +1,11 @@
 ---
-story_id: <n>
-gh_issue: ""
-gh_pr: ""
+agent_type: <backend|frontend|devops|data-eng>
 slug: <kebab>
+gh_issue: ""
 state: drafted
-points: <fib>
-priority: <highest|high|medium|low|none>
-area: <devops|data-eng|backend|frontend|"">
 deps: []
-external_blockers: []
-claimed_by: ""
-claimed_at: ""
-branch: ""
+last_commit_sha: ""
+pushed_at: ""
 last_synced_at: ""
 ---
 
@@ -21,14 +15,14 @@ last_synced_at: ""
 
 # Acceptance Criteria
 
-(prefer test names; prose only when test name insufficient)
+(prefer test names where applicable; for devops, frontend-no-logic — prose OK)
 
 - TestX_doesY
 - TestZ_returnsErrOnW
 
-# Affected Packages / Files
+# Affected Files
 
-- <path>/...
+- <repo-relative path>
 
 # Out of Scope
 
@@ -36,11 +30,12 @@ last_synced_at: ""
 
 # Rule files to load
 
-- .claude/rules/<rule>.md
+- <repo>/.claude/rules/<agent-type>.md
+- <repo>/.claude/rules/<topic>.md
 
 # Blocked by
 
-(empty until issues created; populated post-creation as `#N` refs)
+(empty until sub-issues created; populated post-creation as `#N` refs)
 
 # Package Structure
 
@@ -52,41 +47,38 @@ last_synced_at: ""
 # Interfaces
 
 ```
-// concrete interface declarations
+// concrete signatures, language-idiomatic, no pseudo-code
 ```
 
-# Test Scaffold (failing — TDD seed)
+# Verification Setup
+
+(test files for backend / data-eng / frontend-w-logic; validator stubs for devops / frontend-no-logic)
 
 ```
-// failing unit tests, table-driven where applicable
+// test files OR validator commands
 ```
 
 # Verification Commands
 
 - <lint cmd>
-- <test cmd>
+- <test or validator cmd>
+- <build cmd if applicable>
 
 # Migration
 
 N/A — <reason>
 
+(or fenced SQL block w/ schema diff)
+
 # Estimate
 
-<fib>
+<small | medium | large>
 
-# Deploy Notes
-
-(populated by architect if devops-agent ran)
-
-# Data Spec
-
-(populated by architect if data-engineer ran — link to data-specs/<name>.md)
-
-# --- coder fills below ---
+# --- agent fills below ---
 
 # Status:
 # Branch:
-# Commits:
-# PR:
+# Commit:
 # Verification:
+# Rules appended:
 # Blockers:

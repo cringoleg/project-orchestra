@@ -1,7 +1,7 @@
 {
   "name": "epic-flow",
-  "version": "0.2.0",
-  "description": "GitHub-only epic-to-story pipeline. Issues + labels = source of truth for public artifacts. Local files for narrative. Push-only, no sync. Research → grill → DDD+TDD plan → claim → coder subagent. Devops + data-engineer consultative subagents.",
+  "version": "0.3.0",
+  "description": "GitHub-driven feature pipeline. /epic <desc> orchestrates research → architect → implementers (backend/frontend/devops/data-eng) → finalize → PR. One PR per epic. Sequential agents in single epic worktree. Resumable. Conventions accumulate per cycle.",
   "author": {
     "name": "Oleg Serebrennikov"
   }

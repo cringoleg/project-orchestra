@@ -1,79 +1,100 @@
-# epic-flow — Design (v0.2)
+# epic-flow — Design (v0.3)
 
-GitHub-only plugin. Epic → grilled requirements → DDD+TDD story plans → claimed → coded by isolated background subagent in worktree. Manual gate at PR review. Push-only, no sync.
+GitHub-driven feature pipeline. Single command orchestrates research → architect → implementers → finalize → PR. One PR per epic. Sequential implementers in single epic worktree. Resumable on session death.
 
-## Philosophy
+## Pipeline (canonical 13 steps)
 
-- **GitHub = public truth.** Issue body + labels = epic/story state. Anyone with repo access sees current state without local context.
-- **Local = private narrative.** Grill transcript, intake research, decisions stay local (often messy, often personal).
-- **Push-only, lean calls.** Plugin pushes on transitions. No background poll. Targeted pulls only at intake/claim/done. ~3 fetches per story lifecycle.
-- **Manual code review.** Coder writes + commits, opens PR. Human reviews + merges. `/epic-done` polls PR-merge once, then closes issue.
+1. User: `/epic <feature-desc>`.
+2. Researcher writes `intake.md` with best-practices summary + repo affected packages + `Open Questions`.
+3. Main session grills user via `grill-protocol`. User answers until conclusion.
+4. Main session writes `proposed-epic.md`, pushes to GH issue body, flips `phase:research → phase:architect`. Spawns architect.
+5. Architect writes per-story files (DDD/TDD skeleton + agent_type) + `architect-summary.md`.
+6. Main session grills user holistically on architect's plan. User confirms.
+7. Main session batch-creates GH sub-issues, updates epic body task-list, flips `phase:architect → phase:implementing`. Dispatches implementers in topo order, sequential.
+8. Each implementer agent runs its pipeline (verification gate, code, distill rules, squash commit) in shared worktree until done.
+9. Main session runs finalize: `index.json.verify` (lint → test → build) in worktree. On green: pushes branch, opens PR `Closes #<epic>` + per-story closes. Flip `phase:finalize → phase:review`.
+10. PR contains all stories tagged via `Closes #<sub>` lines.
+11. On any failure: 2 retries per incident, then escalate to user (`phase:blocked`).
+12. User merges PR. CI auto-deploys. Plugin not involved.
+13. `/epic-done` (or `/epic` resume detecting merge) closes epic issue + sub-issues, flips `phase:done`.
 
-## Non-goals
+## Source of truth
 
-- No Shortcut, no Notion, no any other PM tool.
-- No MCP servers required.
-- No background poll, no cron, no webhooks.
-- No auto-merge.
-- No multi-machine sync.
+GitHub. Issue body, labels, sub-issues, PR. Authoritative on conflict.
+
+Local mirror = `<repo>/.claude/epics/gh-<N>/` narrative scratch. Reconciled to GH on every `/epic` invocation.
 
 ## Plugin location
 
-`~/.claude/plugins/epic-flow/`. Personal install.
+`~/.claude/plugins/epic-flow/`. Personal install. Settings.json registers via plugins config.
 
-## Commands (8)
+## Commands (2)
 
 | Command | Purpose |
 |---|---|
-| `/epic-setup` | One-time per repo. Creates label taxonomy via `gh label create`. |
-| `/epic-intake <url\|#N\|title>` | Auto-detect. URL/`#N` = fetch existing issue. Title = create new issue + draft. |
-| `/epic-plan` | Story breakdown + per-story DDD code-first plan. Push child issues at end. |
-| `/epic-claim <story-id>` | Worktree + branch + assign issue + `state:claimed`. |
-| `/epic-dispatch <story-id>` | Background `story-coder` subagent. `state:in-progress`. |
-| `/epic-done <story-id>` | Check PR merged. If yes → close issue + `state:done`. Else hint. |
-| `/devops-check <topic>` | Ad-hoc devops-agent invocation. |
-| `/data-search <query>` | Ad-hoc data-engineer invocation. |
+| `/epic-setup` | One-time per repo. Labels + gitignore + rule file scaffolds. |
+| `/epic [<desc>\|<#N>\|<url>]` | Entry + resume. No-arg from epic dir = resume current phase. |
 
-## Subagents (6)
+All other behavior surfaces via in-flow gate verbs (`continue`/`retry`/`edit`/`skip`/`abort`).
+
+## Agents (6)
 
 | Agent | When | Role |
 |---|---|---|
-| `epic-researcher` | `/epic-intake` | Bounded research → `intake.md`. Cap: 15 reads, 10 `gh`/web fetches. |
-| `story-planner` | `/epic-plan` pass 1 | Story list with scope, points, priority, deps, `area:` hint label. |
-| `story-architect` | `/epic-plan` pass 2 | DDD package tree, interfaces, failing tests. Must grill before spawning subagent. |
-| `story-coder` | `/epic-dispatch` | Background subagent in worktree. TDD, commit + PR open with `Closes #<N>`. No merge. |
-| `devops-agent` | architect-spawned or `/devops-check` | Consultative. Inspects deploy state (docker/k8s/terraform/CI). 10 reads / 5 bash. |
-| `data-engineer` | architect-spawned or `/data-search` | Consultative. Searches sources, emits `data-spec-<name>.md`. 20 reads / 10 bash. |
+| `researcher` | research stage | Bounded research (repo + GH + ≤5 web). Writes `intake.md`. |
+| `architect` | architect stage | DDD/TDD skeleton. Picks subset of implementer agents. Writes story files + `architect-summary.md`. |
+| `backend` | implementing stage (when assigned) | Server logic, handlers, services, domain code. |
+| `frontend` | implementing stage (when assigned) | UI, components, client wiring. |
+| `devops` | implementing stage (when assigned) | CI, manifests, env wiring. NOT the finalize step (main session does that). |
+| `data-eng` | implementing stage (when assigned) | Migrations, seeds, ETL scripts. Code only — no spec-only mode. |
 
-Grill = main session, interactive Q&A via `grill-protocol` skill. Coder isolation = worktree (gitignored epic dir physically absent) + subagent prompt restricting reads to story file + listed rule files.
+Max 4 implementer stories per epic. One agent_type used at most once per epic. If work spans two backend chunks → fold into single backend story w/ multiple acceptance criteria.
+
+## Skills (1)
+
+| Skill | Used by |
+|---|---|
+| `grill-protocol` | Main session at research grill + architect grill. |
+
+No language-specific skills bundled. Repo's `AGENTS.md` / `CLAUDE.md` / `.claude/rules/<topic>.md` carry stack conventions.
 
 ## State model
 
 ### GitHub side (public truth)
 
-- **Epic** = parent issue, label `type:epic` + one `phase:*` label.
-- **Story** = child issue, label `type:story` + one `state:*` label + `points:N` + `priority:X` + optional `area:*` + optional `blocked`.
-- **Dependencies**: story body has `## Blocked by` section with `#N` refs. `blocked` label set when section non-empty + any ref open.
-- **Epic ↔ stories link**: epic body task-list refs each story (`- [ ] #M description`). Auto-rendered cross-links by GitHub.
-- **PR ↔ story link**: PR body has `Closes #<N>`. Coder always emits this.
+- **Epic** = parent issue. Labels: `type:epic` + one `phase:*`.
+- **Story** = child issue. Labels: `type:story` + one `state:*` + one `agent:*`.
+- **Epic ↔ stories** = epic body has `## Stories` task-list (`- [ ] #N <slug> (agent:<type>)`).
+- **PR ↔ epic + stories** = PR body has `Closes #<epic>` + `Closes #<sub-issue>` per story.
 
-### Local side (narrative + memory)
+### Local side (narrative)
 
 ```
 <repo>/.claude/epics/gh-<N>/
-  intake.md
-  grill.md
-  decisions.md
-  proposed-epic.md
-  index.json          # story-id → issue-number map + last-sync timestamps
-  data-specs/
-    <name>.md         # data-engineer outputs
+  intake.md            # researcher output
+  grill.md             # append-only Q&A log
+  decisions.md         # distilled grill output
+  proposed-epic.md     # epic body draft
+  architect-summary.md # architect's plan overview
+  index.json           # state mirror + verify cmds + story manifest
   stories/
-    1-<slug>.md       # FrontMatter holds gh_issue, last_synced_at, etc.
-    2-<slug>.md
+    backend.md         # one file per assigned implementer
+    frontend.md
+    devops.md
+    data-eng.md
 ```
 
-`.claude/epics/` = gitignored. Worktree = fresh checkout, epic dir physically absent → coder forbidden by topology.
+`.claude/epics/` is gitignored.
+
+### Worktree
+
+```
+<repo>/.claude/worktrees/epic-gh-<N>-<slug>/
+```
+
+Single worktree per epic. Branch `epic/gh-<N>-<slug>` off latest default branch. Sequential implementers commit linearly.
+
+`.claude/worktrees/` is gitignored.
 
 ### `index.json` schema
 
@@ -81,248 +102,310 @@ Grill = main session, interactive Q&A via `grill-protocol` skill. Coder isolatio
 {
   "epic_id": "gh-123",
   "issue_number": 123,
-  "stories": {
-    "1": { "issue_number": 124, "slug": "rename-foo", "last_synced_at": "..." },
-    "2": { "issue_number": 125, "slug": "split-bar", "last_synced_at": "..." }
-  }
+  "slug": "ride-history",
+  "phase": "implementing",
+  "active_story": "backend",
+  "gate_pending": null,
+  "last_transition": "2026-04-29T08:00:00Z",
+  "verify": {
+    "lint":  ["go vet ./...", "golangci-lint run"],
+    "test":  ["go test ./..."],
+    "build": ["go build ./..."]
+  },
+  "stories": [
+    { "agent_type": "data-eng", "issue_number": 124, "slug": "ride-history-schema",  "state": "done",        "deps": [] },
+    { "agent_type": "backend",  "issue_number": 125, "slug": "ride-history-handler", "state": "in-progress", "deps": ["data-eng"] },
+    { "agent_type": "frontend", "issue_number": 126, "slug": "ride-history-page",    "state": "drafted",     "deps": ["backend"] }
+  ]
 }
 ```
 
-Tiny lookup file. Used to batch ops (iterate stories without grep) and to cache issue numbers without re-fetch.
+Story array ordered = topo dispatch order.
 
 ### Phases (epic, label-mutex)
 
-`phase:intake` → `phase:planning` → `phase:dispatch` → `phase:done`
+`phase:research` → `phase:architect` → `phase:implementing` → `phase:finalize` → `phase:review` → `phase:done`
+
+Plus `phase:blocked` (any phase can transition to it; resume returns to last phase).
 
 ### States (story, label-mutex)
 
-`state:drafted` → `state:claimed` → `state:in-progress` → `state:done`
+`state:drafted` → `state:in-progress` → `state:done`
 
-Blocker = stays `state:in-progress` + `blocked` label + `## Blockers` body section appended.
-Wrong-phase command = refuse with hint.
+Plus `state:blocked` (replaces `state:in-progress` when retries exhausted).
 
-## Label taxonomy
+## Label taxonomy (17 total)
 
-| Prefix | Values | Mutex? |
+| Prefix | Values | Mutex |
 |---|---|---|
 | `type:` | `epic`, `story` | yes |
-| `phase:` | `intake`, `planning`, `dispatch`, `done` | yes (epic only) |
-| `state:` | `drafted`, `claimed`, `in-progress`, `done` | yes (story only) |
-| `points:` | `1`, `2`, `3`, `5`, `8`, `13` | yes |
-| `priority:` | `highest`, `high`, `medium`, `low`, `none` | yes |
-| `area:` | `devops`, `data-eng`, `backend`, `frontend`, … | additive |
-| `blocked` | (boolean) | flag |
+| `phase:` | `research`, `architect`, `implementing`, `finalize`, `review`, `blocked`, `done` | yes (epic) |
+| `state:` | `drafted`, `in-progress`, `done`, `blocked` | yes (story) |
+| `agent:` | `backend`, `frontend`, `devops`, `data-eng` | yes (story) |
 
-Mutex enforced by convention (plugin removes old prefix-mate before adding new).
+Mutex enforced by convention — plugin removes old prefix-mate before adding new.
 
-## Pipeline
+## Verification
 
-### `/epic-setup`
+Two-level:
 
-`gh label create` for each label in taxonomy. Idempotent (`--force` if exists). Run once per repo.
+1. **Story-level gate** — each implementer's story FrontMatter has `# Verification Commands`. Must pass clean before agent commits.
+2. **Epic-level finalize gate** — main session runs `index.json.verify` (`lint` → `test` → `build`) in worktree. Stop on first fail. On fail: regex-extract file paths from stderr → match story `Affected Files` → re-dispatch single matched agent. Multi-match / no-match → escalate.
 
-### `/epic-intake <url|#N|title>`
+Architect detects + writes `index.json.verify` during architect pass. User edits at architect grill if wrong.
 
-1. **Auto-detect arg**:
-   - `https://github.com/.../issues/N` or `^#?\d+$` → fetch existing issue. `epic-id = gh-<N>`.
-   - Else → create new issue: `gh issue create --title "<arg>" --label type:epic,phase:intake`. `epic-id = gh-<N>` from response.
-2. **Resume** if `<repo>/.claude/epics/gh-<N>/` exists. Read current state (label `phase:*` on issue).
-3. Spawn `epic-researcher` → `intake.md`.
-4. Main session grills via `grill-protocol`. Append `grill.md`. Distill `decisions.md`.
-5. Hybrid termination — agent proposes done with unresolved list. User confirms.
-6. Write `proposed-epic.md`. Push to issue body via `gh issue edit <N> --body-file proposed-epic.md`. Flip label `phase:intake` → `phase:planning`. Print: "Phase → planning. Run `/epic-plan` next."
+## Retry + escalation
 
-### `/epic-plan`
+Per-incident counter. Same agent fails on same root cause: 2 retries → escalate.
 
-1. **Pass 1**: spawn `story-planner` (pass=1). Reads `intake.md`, `decisions.md`. Writes `stories-proposal.md` table (soft cap 10). Includes `area:` hint per story.
-2. User approves/edits/rejects.
-3. **Pass 2 per story**: spawn `story-planner` (pass=2) per row → fills story file scope/criteria. Then spawn `story-architect` per story → fills Package Structure, Interfaces, Test Scaffold.
-   - **Architect grill rule**: before architect spawns `devops-agent` or `data-engineer`, it MUST run `grill-protocol` with user. Once grilled, spawns subagent with focused brief.
-4. Batch review.
-5. Approve all → for each story: `gh issue create --title "<slug>" --label type:story,state:drafted,points:N,priority:X[,area:Y]` → write `gh_issue` to story FrontMatter + `index.json`. Update epic body with task-list of child issues. Flip epic `phase:planning` → `phase:dispatch`.
+Different failure on same agent later in epic = fresh 2 retries.
 
-### `/epic-claim <story-id>`
+Escalate path: set `phase:blocked` (epic) + `state:blocked` (story) + write story's `# Blockers` section + `index.json.gate_pending = { story_id, reason, last_error }`. Yield to user with context. User replies one of:
 
-1. Refuse unless story label = `state:drafted`.
-2. Targeted pull: `gh issue view <story-issue>` to confirm open + unassigned.
-3. Worktree `<repo>/.claude/worktrees/story-gh-<N>-<slug>/`. Branch `story/gh-<N>-<slug>` off latest default branch.
-4. Push: `gh issue edit <N> --add-assignee @me`, flip `state:drafted` → `state:claimed`.
-5. Update story FrontMatter: `claimed_by`, `claimed_at`, `branch`.
+| Verb | Effect |
+|---|---|
+| `continue` | Re-check current state. User fixed in place. Advance if green. |
+| `retry` | Re-spawn agent w/ refreshed story file. Counter resets. |
+| `edit` | User edits files outside session. Reply `continue` / `retry` / `abort` after. |
+| `skip` | Mark story `done` manually. Warns first. Dangerous. |
+| `abort` | Stop epic. Preserve worktree + epic dir. Clean exit. |
 
-### `/epic-dispatch <story-id>`
+## Convention accumulation
 
-1. Refuse unless `state:claimed`.
-2. Flip `state:claimed` → `state:in-progress`.
-3. Spawn `story-coder` background subagent in worktree. Prompt = absolute story file path + behavior spec.
-4. Parent session free. Notification on subagent done.
+Each cycle, agents append rules to persistent files. Files version-controlled with epic PR.
 
-Coder behavior:
-- Read story file + listed rule files only.
-- Write tests from *Test Scaffold* into worktree.
-- `<verify-test-cmd>` → expect RED. Append to story file under `# Verification`.
-- Implement → GREEN.
-- `<verify-lint-cmd>` clean.
-- `git add` + `git commit`. Push branch. `gh pr create --title "<slug>" --body "Closes #<story-issue>\n\n<commit list>"`.
-- Status `done` in story FrontMatter (local). Issue stays `state:in-progress` until `/epic-done`.
-- Max 2 retries. Then `## Blockers` section + exit, `blocked` label pushed.
+| File | Owner | Scope |
+|---|---|---|
+| `<repo>/AGENTS.md` | main session (post-grill, both grills) | project-wide cross-cutting |
+| `<repo>/.claude/rules/<agent-type>.md` | implementer (pre-commit, ≤5 rules, dedup) | per-agent specialized |
+| `<repo>/.claude/rules/<topic>.md` (e.g. `migrations.md`, `error-handling.md`) | architect (when applicable) | topical fine-grained |
 
-### `/epic-done <story-id>`
+Rule format (one per line):
 
-1. Targeted pull: `gh pr view <pr-number> --json state,mergedAt`. PR number stored in story FrontMatter at dispatch time.
-2. If `MERGED`: close story issue (`gh issue close <N> --reason completed`), flip `state:in-progress` → `state:done`. If all stories `state:done`: epic `phase:dispatch` → `phase:done`, close epic issue.
-3. Else: print PR state, hint user to review/merge.
+```
+- <rule one line>. (gh-<N>:<agent-type> <source: grill|architect|self>)
+```
 
-## Story file template
+Implementer's commit includes code + rule file changes atomically.
+
+Rule file bloat: cap watch (~50 rules per file). Future maintenance pass for compression. No auto-prune now.
+
+## File topology + read-scope per implementer
+
+Worktree = epic branch checkout. `.claude/epics/` gitignored → physically absent in worktree.
+
+Each implementer subagent receives spawn prompt with:
+- Worktree absolute path (cwd)
+- Absolute path to own story file (in epic dir, outside worktree)
+- Absolute paths to rule files listed in story FrontMatter
+- `gh_issue` (story sub-issue number), `branch`, `agent_type`
+
+**ALLOWED**:
+- Worktree contents (cwd)
+- Own story file (absolute path)
+- Listed rule files (absolute paths)
+- Repo-root `AGENTS.md` + `CLAUDE.md` (auto-loaded by Claude Code)
+- Own `<repo>/.claude/rules/<agent-type>.md` (rule append target)
+
+**FORBIDDEN**:
+- Sibling story files in epic dir
+- `intake.md`, `grill.md`, `decisions.md`, `proposed-epic.md`, `architect-summary.md`
+- Other epic dirs
+- `list-traverse` parent of own story file
+
+Predecessor's work visible via committed code in worktree, not via predecessor's story file.
+
+## PR shape
+
+**Title**: `<epic-slug>` (matches epic issue title).
+
+**Body**:
 
 ```markdown
----
-story_id: <n>
-gh_issue: <number-or-empty>
-gh_pr: <number-or-empty>
-slug: <kebab>
-state: drafted
-points: <fib>
-priority: <highest|high|medium|low|none>
-area: <devops|data-eng|backend|frontend|""> 
-deps: []
-external_blockers: []
-claimed_by: ""
-claimed_at: ""
-branch: ""
-last_synced_at: ""
----
+Closes #<epic-issue>
 
-# Goal
-<paragraph>
+Closes #<backend-sub>
+Closes #<frontend-sub>
+Closes #<devops-sub>
+Closes #<data-eng-sub>
 
-# Acceptance Criteria
-- TestX_doesY
+## Stories
+- `backend` (#<n>): <one-line summary>
+- `frontend` (#<n>): <one-line summary>
+- `devops` (#<n>): <one-line summary>
+- `data-eng` (#<n>): <one-line summary>
 
-# Affected Packages / Files
-- <path>
+## Verification
+- lint: clean
+- test: clean
+- build: clean
 
-# Out of Scope
-- ...
+## Conventions delta
+- AGENTS.md: <count> new rules
+- .claude/rules/backend.md: <count> new rules
 
-# Rule files to load
-- .claude/rules/<rule>.md
-
-# Blocked by
-- (empty | list of #N refs)
-
-# Package Structure
-\`\`\`
-<tree>
-\`\`\`
-
-# Interfaces
-\`\`\`go
-\`\`\`
-
-# Test Scaffold (failing)
-\`\`\`go
-\`\`\`
-
-# Verification Commands
-- <lint cmd>
-- <test cmd>
-
-# Migration
-N/A — <reason>
-
-# Estimate
-<fib>
-
-# --- coder fills below ---
-# Status:
-# Branch:
-# Commits:
-# Verification:
-# Blockers:
+🤖 epic-flow
 ```
+
+## Commit format per agent
+
+Conventional Commits, agent_type as scope:
+
+```
+<type>(<agent>): <subject ≤50 chars>
+
+<optional body>
+```
+
+`type` ∈ {`feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `ci`}.
+
+Squash-at-end per agent. One commit per agent_type. PR has ≤4 commits.
+
+Repo's `CLAUDE.md` / `AGENTS.md` may declare different convention — agents respect when present.
+
+## Resume + session-death contract
+
+1. **Disk-only state.** Every transition writes `index.json` + GH label before yielding.
+2. **Pre-yield commit.** Before any user gate or subagent spawn, write state.
+3. **Implementer resumability.** Per-TDD-cycle commits during agent work. On orphan, re-spawn re-reads story + last commit log.
+4. **Resume detection.** `/epic` no-arg from inside epic dir:
+   - Read `index.json`. Read GH labels.
+   - If GH `phase:*` ≠ local → trust GH, rewrite local.
+   - If `gate_pending` set → re-print gate prompt.
+   - If `active_story` set + no PR + no recent commit (>10 min on branch) → orphan. Re-spawn implementer.
+   - Else advance from current phase.
+5. **Idempotent transitions.** Phase flips check current state first. Already-advanced = no-op + warn.
+
+## Cleanup matrix
+
+| Terminal state | Local epic dir | Worktree | Branch |
+|---|---|---|---|
+| `phase:done` (PR merged) | delete (default) / archive on user `archive` | `git worktree remove` | keep (already merged) |
+| `phase:blocked` + `abort` | keep (debug context) | `git worktree remove` | keep (user can resurrect) |
+| `phase:blocked` + `continue`/`retry` (resume) | keep | keep | keep |
+
+## `/epic-setup` (one-time per repo)
+
+1. **Preflight** — `gh repo view` to verify cwd is GH repo + `gh` authed. Abort with hint if not.
+2. **Create labels** — 17 labels via `gh label create --force` (idempotent).
+3. **Append `.gitignore`** (idempotent):
+   ```
+   .claude/epics/
+   .claude/worktrees/
+   ```
+4. **Pre-create rule files** — `<repo>/AGENTS.md` (header only if absent), `<repo>/.claude/rules/{backend,frontend,devops,data-eng}.md` (each: `# <agent_type> rules\n\n`).
+5. **Print summary** — labels created/updated count, gitignore status, rule files initialized.
+
+Out of scope for setup: `verify` config (architect populates per-epic in `index.json`).
+
+## `/epic <arg>` (entry + resume)
+
+### Argument forms
+
+- **Free-text** → create new epic issue. Title = arg. `gh issue create --title "<arg>" --label type:epic,phase:research --body "Draft"`. Capture `<N>`. Init `<repo>/.claude/epics/gh-<N>/`.
+- **`#N`** or **`https://github.com/.../issues/<N>`** → fetch existing issue. Treat as fresh-from-existing if `phase:research`. Resume otherwise.
+- **No arg, inside epic dir** → resume current phase.
+
+### Single-active-epic guard
+
+Before any new-epic action: `gh issue list --label type:epic --state open --json number,labels`. If any has `phase:* != phase:done` → refuse, print existing epic + offer abort/resume.
+
+### Pipeline (orchestrator pseudocode)
+
+```
+1. Resolve arg → epic-id, gh_issue_number, epic-dir.
+2. Single-active-epic guard (if new epic).
+3. Read state (index.json + GH labels). Reconcile if drift.
+4. Switch on phase:
+     phase:research:
+       if no intake.md → spawn researcher (foreground subagent).
+       invoke grill-protocol on intake's Open Questions.
+       on grill confirm:
+         distill ≤3 project-wide rules from decisions.md → append AGENTS.md.
+         write proposed-epic.md.
+         user confirms → push epic body, flip phase:research → phase:architect.
+     phase:architect:
+       if no story files → spawn architect (foreground subagent).
+       invoke grill-protocol on architect-summary.md (holistic).
+       on grill confirm:
+         distill ≤3 project-wide rules → append AGENTS.md.
+         batch-create sub-issues. Update epic body task-list. Flip phase.
+         create worktree + branch.
+     phase:implementing:
+       for story in index.json.stories (topo order):
+         if story.state == done → skip.
+         spawn implementer subagent (background).
+         monitor → on done, mark state:done.
+         on fail: retry (≤2). On 2nd fail: escalate.
+       all done → flip phase:implementing → phase:finalize.
+     phase:finalize:
+       run index.json.verify (lint → test → build).
+       on green → push branch, open PR (Closes ...). Flip phase:finalize → phase:review.
+       on fail → diagnose → re-dispatch matching agent (counts as retry).
+     phase:review:
+       gh pr view <pr> --json state,mergedAt.
+       if MERGED → close epic + sub-issues, flip phase:review → phase:done. Cleanup per matrix.
+       else → print "PR #<n> still open. Merge to advance."
+     phase:done:
+       print "epic done."
+     phase:blocked:
+       print blocker + gate_pending. Wait for verb.
+```
+
+### Gate verbs (any phase)
+
+`continue`, `retry`, `edit`, `skip`, `abort`. Behaviors per Retry + escalation section.
+
+### Mid-implement abort
+
+User types `abort` (or `/epic abort`) anytime. Main session monitors → on user message during background subagent → kill subagent → revert in-progress story to `state:blocked` → set epic `phase:blocked` → yield. Worktree changes preserved.
+
+## Templates
+
+`templates/`:
+- `intake.md` — researcher output shape
+- `decisions.md` — grill distill shape
+- `proposed-epic.md` — epic body shape
+- `story.md` — per-agent story file shape
+- `architect-summary.md` — architect plan overview shape
+- `index.json` — state schema seed
 
 ## Plugin layout
 
 ```
 ~/.claude/plugins/epic-flow/
-  DESIGN.md
   README.md
+  DESIGN.md
   .claude-plugin/plugin.json
   commands/
     epic-setup.md
-    epic-intake.md
-    epic-plan.md
-    epic-claim.md
-    epic-dispatch.md
-    epic-done.md
-    devops-check.md
-    data-search.md
+    epic.md
   agents/
-    epic-researcher.md
-    story-planner.md
-    story-architect.md
-    story-coder.md
-    devops-agent.md
-    data-engineer.md
+    researcher.md
+    architect.md
+    backend.md
+    frontend.md
+    devops.md
+    data-eng.md
   skills/
     grill-protocol/SKILL.md
   templates/
     intake.md
-    story.md
-    proposed-epic.md
     decisions.md
-    data-spec.md
+    proposed-epic.md
+    story.md
+    architect-summary.md
     index.json
 ```
 
-No hooks. No scheduled tasks. No background workers.
+No hooks. No scheduled tasks. No background workers beyond per-epic implementer subagents.
 
-## Call budget per epic lifecycle (typical)
+## Non-goals
 
-| Event | `gh` calls |
-|---|---|
-| `/epic-setup` | ~12 (one-time, label creates) |
-| `/epic-intake` (new) | 1 (issue create) + 1 (body push at phase flip) + 1 (label flip) = 3 |
-| `/epic-intake` (existing) | 1 (issue view) + 2 (push + flip) = 3 |
-| `/epic-plan` | N (issue create per story) + 1 (epic body update) + 1 (phase flip) ≈ N+2 |
-| `/epic-claim <story>` | 1 (view) + 1 (assign) + 1 (label flip) = 3 |
-| `/epic-dispatch <story>` | 1 (label flip) |
-| coder PR open | 1 (`gh pr create`) |
-| `/epic-done <story>` | 1 (PR view) + 1 (issue close) + 1 (label flip) = 3 |
-
-For 5-story epic: ~12 (setup, amortized) + 3 + 7 + (3+1+3)·5 = 22 + 35 = ~57 calls total. Pre-migration estimate (full Q6 auto + per-commit comments) was ~150+. ~3× reduction.
-
-## Build plan (vertical slice)
-
-Stage 1 — `/epic-setup` + `/epic-intake`
-- `epic-researcher` (gh-CLI rewrite)
-- grill protocol skill (unchanged)
-- intake.md, grill.md, decisions.md, proposed-epic.md
-- index.json + epic-id resolution
-- label bootstrap
-
-Stage 2 — `/epic-plan`
-- `story-planner` + `story-architect` (with grill-before-spawn)
-- `devops-agent` + `data-engineer` (consultative)
-- stories-proposal.md
-- per-story file
-- batch issue creation
-
-Stage 3 — `/epic-claim`
-- worktree + branch
-- assign + label flip
-
-Stage 4 — `/epic-dispatch` + `/epic-done`
-- `story-coder` subagent (background, cwd = worktree)
-- TDD gate, 2-retry, commit + PR open
-- `/epic-done` PR-merge probe + close
-
-Side commands — `/devops-check`, `/data-search`
-- thin wrappers around respective consultative subagents
-
-## Deferred
-
-- `/epic-status` (list epics + phases via `gh issue list --label type:epic`)
-- `/epic-unclaim` (reverse claim)
-- Multi-repo epics
-- GitHub Projects (v2) integration as optional view layer
+- No multi-epic concurrency.
+- No multi-PR per epic.
+- No auto-merge.
+- No webhooks, no cron.
+- No PM-tool integrations (Shortcut/Notion/Jira).
+- No MCP servers required.
+- No multi-machine sync.
