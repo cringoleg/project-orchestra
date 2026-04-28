@@ -22,7 +22,7 @@
 
 ## Stories
 
-(populated at end of `/epic-plan` — task-list of child issues)
+(populated at end of architect grill — task list of child sub-issues + agent_type tag)
 
-- [ ] #<story-issue-1> <slug>
-- [ ] #<story-issue-2> <slug>
+- [ ] #<sub-issue-1> <slug> (agent:<type>)
+- [ ] #<sub-issue-2> <slug> (agent:<type>)

@@ -1,9 +1,9 @@
 ---
-epic_id: <gh-N>
+epic_id: gh-<N>
 gh_issue: <N>
 source: <issue-url-or-arg>
 researched_at: <iso8601>
-budget_used: { reads: 0, fetches: 0 }
+budget_used: { reads: 0, gh: 0, web: 0 }
 ---
 
 # Summary
@@ -18,13 +18,17 @@ budget_used: { reads: 0, fetches: 0 }
 
 - `<path>/` — <why>
 
+# Best Practices
+
+- <practice> (source: <url-or-AGENTS.md>) — <one-line relevance>
+
 # Related Prior Work
 
 - `<sha>` <subject> — relevance
 
 # Open Questions
 
-- <thing planner needs to know>
+- <thing the architect / user needs to resolve>
 
 # Suspected Blockers
 
