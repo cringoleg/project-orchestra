@@ -1,27 +1,41 @@
 ---
-description: Research epic and grill user until requirements aligned
-argument-hint: <url|title>
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, WebFetch
+description: Research epic and grill user until requirements aligned. Auto-creates GitHub issue if title given. Resumes if existing.
+argument-hint: <issue-url|#N|title>
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent
 ---
 
 # /epic-intake
 
-Arg: `$1` = Shortcut/Notion URL OR free-text title for new draft.
+Arg: `$1` = GitHub issue URL, `#N` / numeric issue ref, OR free-text title for new epic.
+
+Requires `gh` CLI authenticated. Run `/epic-setup` first if labels not bootstrapped.
 
 ## Step 1 — Resolve epic-id and dir
 
-Determine `epic-id`:
-- If `$1` matches Shortcut URL or `sc-<n>`: extract numeric → `epic-id = sc-<n>`.
-- If `$1` matches Notion URL: fetch page, derive `epic-id = notion-<page-id-short>` (first 8 chars of UUID).
-- Otherwise treat `$1` as free text: `epic-id = draft-<slug>` where slug = kebab-case first 5 words.
+Detect arg shape:
 
-Set `EPIC_DIR=<repo-root>/.claude/epics/<epic-id>`.
+- **URL** matching `https://github.com/<owner>/<repo>/issues/<N>` → `gh_issue=N`. Existing.
+- **`#?\d+`** → `gh_issue=<N>`. Existing.
+- **Else** → free-text title. Create new issue:
+  ```bash
+  gh issue create --title "$1" --label type:epic,phase:intake --body "Draft — populated by /epic-intake."
+  ```
+  Capture `<N>` from output URL.
 
-If `$EPIC_DIR/state.json` exists → **resume**: read phase, jump to Step 4 if phase ≠ `intake`, else continue grill at Step 5.
+`epic-id = gh-<N>`.
 
-If new: create `$EPIC_DIR/`, write `state.json`:
+`EPIC_DIR=<repo-root>/.claude/epics/gh-<N>`.
+
+If `$EPIC_DIR/` exists → **resume**: read `$EPIC_DIR/index.json` if present. Read current phase from issue label (`gh issue view <N> --json labels`). If `phase:intake` → continue grill. If past intake → refuse with hint.
+
+If new dir: create `$EPIC_DIR/`. Write `$EPIC_DIR/index.json`:
+
 ```json
-{ "phase": "intake", "epic_id": "<id>", "source": "<url-or-text>", "created_at": "<iso8601>", "updated_at": "<iso8601>" }
+{
+  "epic_id": "gh-<N>",
+  "issue_number": <N>,
+  "stories": {}
+}
 ```
 
 Ensure `.claude/epics/` is in repo `.gitignore`. If absent, append.
@@ -30,25 +44,21 @@ Ensure `.claude/epics/` is in repo `.gitignore`. If absent, append.
 
 Spawn `epic-researcher` subagent with prompt:
 
-> Research epic for `$EPIC_DIR/intake.md`. Source: `$1` (kind: `<shortcut|notion|draft>`).
+> Research epic. Output: `$EPIC_DIR/intake.md`.
 >
-> Budget: max 15 file reads, max 10 MCP/web fetches. Stop when budget hit.
+> Inputs:
+> - epic-id: `gh-<N>`
+> - gh_issue_number: `<N>`
+> - source_arg: `$1`
+> - output_path: `$EPIC_DIR/intake.md`
 >
-> Output `intake.md` with sections: *Summary, Linked Docs, Affected Packages, Related Prior Work, Open Questions, Suspected Blockers*.
+> Budget: 15 reads, 10 fetches. Stop when hit.
 >
-> For Shortcut epics: fetch via `mcp__...epics-get-by-id`, list linked stories, follow Notion links in description.
-> For Notion: fetch via `mcp__...notion-fetch`. Follow inbound Shortcut/PR links.
-> For drafts: write `Summary` from `$1`, leave Linked Docs empty, scan repo via Grep for keywords from title.
+> Steps: fetch issue body+comments via `gh issue view <N> --json title,body,comments,labels,assignees,url`; follow primary `#N` refs in body; grep repo for keywords; `git log` since 6 months filtered; `gh search issues` for closed related.
 >
-> Affected Packages: grep repo for keywords. List `api/internal/<pkg>/` paths only. Note canonical examples `api/internal/featureflags/` and `api/internal/giveaways/` if relevant.
->
-> Related Prior Work: `git log --oneline --since=6.months --all` filtered by keyword. Top 5 only.
->
-> Open Questions: bullet list. Each = a thing the planner will need answered to break this into stories. Aim 5–15.
->
-> Suspected Blockers: cross-team deps, infra, missing schemas, ADR voids.
+> Sections: *Summary, Linked Issues / PRs, Affected Packages, Related Prior Work, Open Questions, Suspected Blockers*. Aim 5–15 Open Questions.
 
-Wait for subagent completion. Print path + 5-line summary of `intake.md`.
+Wait for completion. Print path + 5-line summary.
 
 ## Step 3 — User reads intake
 
@@ -86,31 +96,41 @@ When you (Claude) believe all branches resolved, propose:
 
 User confirms → Step 6. Else continue.
 
-## Step 6 — Proposed epic body
+## Step 6 — Proposed epic body + push
 
-Write `$EPIC_DIR/proposed-epic.md`. Sections:
-- *Title*
+Write `$EPIC_DIR/proposed-epic.md` from `templates/proposed-epic.md`. Sections:
+- *Title* (matches issue title; rename via `gh issue edit <N> --title` if user changed it during grill)
 - *Goal*
 - *Scope*
 - *Out of Scope*
 - *Acceptance criteria* (epic-level, not story-level)
 - *Open dependencies / blockers*
+- *Stories* (empty placeholder — populated at end of `/epic-plan`)
 
 Print path + 5-line summary.
 
-Tell user: "Paste `proposed-epic.md` into Shortcut/Notion manually. Reply `done` when posted to advance phase to `planning`, or `edit` to revise."
+Tell user: "Reply `confirm` to push to GitHub issue body + advance phase. Reply `edit` to revise."
 
-On `done`: update `state.json` phase → `planning`, `updated_at` → now. Print: "Phase → planning. Run `/epic-plan` next."
+On `confirm`:
+1. Push body:
+   ```bash
+   gh issue edit <N> --body-file "$EPIC_DIR/proposed-epic.md"
+   ```
+2. Flip label:
+   ```bash
+   gh issue edit <N> --remove-label phase:intake --add-label phase:planning
+   ```
+3. Print: "Phase → planning. Issue: `<url>`. Run `/epic-plan` next."
 
 ## Phase guard
 
-If at start of command `state.json.phase` is anything other than `intake`, refuse with hint:
-- `planning` → "Epic past intake. Run `/epic-plan`."
-- `dispatch` → "Epic past planning. Run `/epic-claim <story-id>` or `/epic-dispatch <story-id>`."
-- `done` → "Epic done. Edit `state.json` to reopen."
+At start of command, if issue label is anything other than `phase:intake`, refuse with hint:
+- `phase:planning` → "Epic past intake. Run `/epic-plan`."
+- `phase:dispatch` → "Epic past planning. Run `/epic-claim <story-id>` or `/epic-dispatch <story-id>`."
+- `phase:done` → "Epic done. Re-open issue + flip label to reopen."
 
 ## Notes
 
 - Working dir = repo root. All paths relative unless prefixed `<repo-root>`.
 - Today's date for timestamps: shell `date -u +%Y-%m-%dT%H:%M:%SZ`.
-- Never write to Shortcut/Notion. User pastes manually.
+- Never bypass `gh` (no curl + token). User authenticates via `gh auth login`.

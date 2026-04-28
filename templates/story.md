@@ -1,15 +1,18 @@
 ---
 story_id: <n>
-shortcut_id: ""
+gh_issue: ""
+gh_pr: ""
 slug: <kebab>
 state: drafted
 points: <fib>
 priority: <highest|high|medium|low|none>
+area: <devops|data-eng|backend|frontend|"">
 deps: []
 external_blockers: []
 claimed_by: ""
 claimed_at: ""
 branch: ""
+last_synced_at: ""
 ---
 
 # Goal
@@ -25,7 +28,7 @@ branch: ""
 
 # Affected Packages / Files
 
-- api/internal/<pkg>/...
+- <path>/...
 
 # Out of Scope
 
@@ -35,31 +38,33 @@ branch: ""
 
 - .claude/rules/<rule>.md
 
+# Blocked by
+
+(empty until issues created; populated post-creation as `#N` refs)
+
 # Package Structure
 
 ```
-api/internal/<pkg>/
-  handlers.go         (new)
-  service.go          (new)
-  internal/storage.go (new)
+<path>/
+  <file>            (new)
 ```
 
 # Interfaces
 
-```go
-// concrete Go interface declarations
+```
+// concrete interface declarations
 ```
 
 # Test Scaffold (failing — TDD seed)
 
-```go
+```
 // failing unit tests, table-driven where applicable
 ```
 
 # Verification Commands
 
-- task backend:lint -- ./api/internal/<pkg>/...
-- go test -count=1 ./api/internal/<pkg>/...
+- <lint cmd>
+- <test cmd>
 
 # Migration
 
@@ -69,10 +74,19 @@ N/A — <reason>
 
 <fib>
 
+# Deploy Notes
+
+(populated by architect if devops-agent ran)
+
+# Data Spec
+
+(populated by architect if data-engineer ran — link to data-specs/<name>.md)
+
 # --- coder fills below ---
 
 # Status:
 # Branch:
 # Commits:
+# PR:
 # Verification:
 # Blockers:
