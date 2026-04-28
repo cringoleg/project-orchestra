@@ -1,7 +1,7 @@
 ---
-epic_id: <id>
-source: <url-or-text>
-source_kind: shortcut | notion | draft
+epic_id: <gh-N>
+gh_issue: <N>
+source: <issue-url-or-arg>
 researched_at: <iso8601>
 budget_used: { reads: 0, fetches: 0 }
 ---
@@ -10,13 +10,13 @@ budget_used: { reads: 0, fetches: 0 }
 
 <2-4 sentence plain summary of the epic.>
 
-# Linked Docs
+# Linked Issues / PRs
 
-- [Title](url) — kind, 1-line purpose
+- #<n> <title> — <relation>
 
 # Affected Packages
 
-- `api/internal/<pkg>/` — <why>
+- `<path>/` — <why>
 
 # Related Prior Work
 
