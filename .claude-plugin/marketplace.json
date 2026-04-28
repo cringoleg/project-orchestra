@@ -1,0 +1,13 @@
+{
+  "name": "project-orchestra",
+  "owner": {
+    "name": "cringoleg"
+  },
+  "plugins": [
+    {
+      "name": "epic-flow",
+      "source": "./",
+      "description": "GitHub-driven feature pipeline. /epic <desc> orchestrates research → architect → implementers (backend/frontend/devops/data-eng) → finalize → PR. One PR per epic. Sequential agents in single epic worktree. Resumable. Conventions accumulate per cycle."
+    }
+  ]
+}
